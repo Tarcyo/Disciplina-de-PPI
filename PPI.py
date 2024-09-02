@@ -1,3 +1,9 @@
+import time
+import pandas as pd
+import os
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.styles import Alignment, PatternFill
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -8,9 +14,8 @@ import torch
 import google.generativeai as genai
 
 
-#API gemini para resmuir o texto:
-genai.configure(api_key="AIzaSyC_qsbOddcFtSVM1kk2XrMQi_fKJ07fV_Y")
-APIgemini = genai.GenerativeModel(model_name="gemini-1.5-flash")
+
+
 
 
 # Carregar o modelo e o tokenizer
@@ -20,8 +25,8 @@ model = AutoModelForSequenceClassification.from_pretrained(model_name)
 
 # Faixa de datas com timezone
 brazil_tz = pytz.timezone('America/Sao_Paulo')
-start_date = brazil_tz.localize(datetime.strptime("01/06/2024", "%d/%m/%Y"))
-end_date = brazil_tz.localize(datetime.strptime("12/08/2024", "%d/%m/%Y"))
+start_date = brazil_tz.localize(datetime.strptime("15/08/2024", "%d/%m/%Y"))
+end_date = brazil_tz.localize(datetime.strptime("02/09/2024", "%d/%m/%Y"))
 
 # Função para formatar a data para a URL de busca
 def format_date_for_url(date):
@@ -163,34 +168,164 @@ def analyze_sentiment(text):
 
     return positivo,negativo, neutro
 
-def resumeOTexto(texto):
-    response = APIgemini.generate_content("Poderia me fazer um favor? faça um resumo da notícia abaixo por gentileza, garanta que o resumo tenha no máximo 512 caracteres, por favor retorne apenas o texto do resumo. Grato!\n"+texto)
-    return response.text
+def resumeOTexto(texto, index):
+    chaveUsada = ""
+    response = ""
     
+    try:
+        # API Gemini para resumir o texto:
+        # Intercalando com outra chave para evitar bloqueio de segurança por múltiplos acessos:
+        if index % 2 == 0:
+            genai.configure(api_key="AIzaSyAzvZOfWwkDHOjUdxb8HVveUCA89O6vDPM")
+            chaveUsada = "chave da Mariana"
+            API = genai.GenerativeModel(model_name="gemini-1.5-flash")
+            response = API.generate_content("Retorne para mim apenas uma String que seja um resumo do texto abaixo, ela deve ser curta, com no máximo 512 caracteres mas que contenha todas as informações. Obrigada!\n" + texto)
+        else:
+            genai.configure(api_key="AIzaSyC_qsbOddcFtSVM1kk2XrMQi_fKJ07fV_Y")
+            chaveUsada = "chave do Tarcyo"
+            API = genai.GenerativeModel(model_name="gemini-1.5-flash")
+            response = API.generate_content("Poderia me fazer um favor? faça um resumo da notícia abaixo por gentileza, garanta que o resumo tenha no máximo 512 caracteres, por favor retorne apenas o texto do resumo. Grato!\n" + texto)
+        
+        # Verifica se a resposta contém um resumo válido
+        if not response or not response.text:
+            raise ValueError("Resposta inválida ou bloqueada.")
+        
+        return response.text, chaveUsada
+    
+    except Exception as e:
+        print(f"Erro ao gerar o resumo: {e}")
+        # Retorna um resumo vazio ou alguma string padrão e chave usada
+        return "Resumo não disponível devido a um erro.", chaveUsada
+
+
+def criaAPlanilha(titulos_tabelas,dados_tabelas):
+
+        # Obter o caminho da área de trabalho do usuário
+        caminho_area_de_trabalho = os.path.join(os.path.expanduser("~"), "Desktop")
+
+        # Nome do arquivo
+        nome_arquivo = "Sentimentos_das_Notícias_Declarações.xlsx"
+
+        # Caminho completo do arquivo na área de trabalho
+        caminho_completo = os.path.join(caminho_area_de_trabalho, nome_arquivo)
+
+        # Criar um novo workbook
+        wb = Workbook()
+
+        # Remover a planilha padrão criada automaticamente
+        if 'Sheet' in wb.sheetnames:
+            wb.remove(wb['Sheet'])
+
+        # Adicionar múltiplas tabelas
+        for idx, (titulo_tabela, dados) in enumerate(zip(titulos_tabelas, dados_tabelas), start=1):
+            ws = wb.create_sheet(title=titulos_tabelas[idx-1])
+
+            # Adicionar o título da tabela
+            ws.merge_cells('A1:F1')
+            ws['A1'] = titulo_tabela
+            ws['A1'].alignment = Alignment(horizontal="center", vertical="center")
+            ws['A1'].fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
+
+            # Criar DataFrame com os dados da tabela
+            df = pd.DataFrame(dados)
+
+            # Inserir os dados do DataFrame na planilha
+            for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), 2):
+                for c_idx, value in enumerate(row, 1):
+                    ws.cell(row=r_idx, column=c_idx, value=value)
+
+        # Salvar o arquivo Excel
+        wb.save(caminho_completo)
+
+        print(f"Tabelas criadas com sucesso no arquivo '{nome_arquivo}' na área de trabalho!")
+        
+        
 
 
 # Lista de palavras para buscar notícias
 queries = ["ELON MUSK", "MARK ZUCKERBERG",]
 
+
+
+
+Titulos=[]
+datas=[]
+URLs=[]
+positivos=[]
+negativos=[]
+neutros=[]
+
+
+
+
+
 # Obter URLs de notícias para cada palavra na lista
-for query in queries:
+for numeroQuery in range(len(queries)):
+    query = queries[numeroQuery]
     print(f"                                                   RESULTADOS PARA: '{query}':")
     print()
     news_urls = get_news_urls(query)
+
+    Titulos.append([])
+    datas.append([])
+    URLs.append([])
+    positivos.append([])
+    negativos.append([])
+    neutros.append([])
+
     if not news_urls:
         continue
-    for url in news_urls:
+
+    for numeroUrl in range(len(news_urls)):
+        # Pausando para evitar o bloqueio da API por sobrecarga
+        time.sleep(4)
+
+        url = news_urls[numeroUrl]
         news_data = get_news_text(url)
         if news_data:
-            resumo=resumeOTexto(news_data['content'])
-            positivo, negativo, neutro= analyze_sentiment(resumo)
-            print(f"Título: {news_data['title']}")
-            print(f"Data de Publicação: {news_data['publication_date']}")
-            print(f"Resumo do texto: "+resumo)
-            print(f"URL: {url}")
-            print(f"SENTIMENTOS: Positivo: ",positivo," Negativo: ",negativo," Neutro",neutro)
-            print()
-            print()
+            try:
+                resumo, chaveUsada = resumeOTexto(news_data['content'], numeroUrl)
+                positivo, negativo, neutro = analyze_sentiment(resumo)
+                
+                print(f"Título: {news_data['title']}")
+                print(f"Data de Publicação: {news_data['publication_date']}")
+                print(f"Resumo do texto: {resumo}")
+                print(f"Chave usada: {chaveUsada}")
+                print(f"URL: {url}")
+                print(f"SENTIMENTOS: Positivo: {positivo} Negativo: {negativo} Neutro: {neutro}")
+                print()
+                print()
+
+                Titulos[numeroQuery].append(news_data['title'])
+                datas[numeroQuery].append(news_data['publication_date'])
+                URLs[numeroQuery].append(url)
+                positivos[numeroQuery].append(positivo)
+                negativos[numeroQuery].append(negativo)
+                neutros[numeroQuery].append(neutro)
+            except Exception as e:
+                print(f"Erro ao processar a notícia '{url}': {e}")
+                continue  # Continua para a próxima URL em caso de erro
+
+dados_tabelas = [
+]
+
+for numeroQuery in range(len(queries)):
+    dados_tabelas.append({"Título": Titulos[numeroQuery],
+        "Data": datas[numeroQuery],
+        "URL": URLs[numeroQuery],
+        "Positivo": positivos[numeroQuery],
+        "Negativo": negativos[numeroQuery],
+        "Neutro": neutros[numeroQuery]})
+    
+
+
+
+
+criaAPlanilha(queries,dados_tabelas)
+
+
+
+            
     
 
    
