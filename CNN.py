@@ -5,13 +5,6 @@ import pytz
 from urllib.parse import urlparse, parse_qs, quote
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
-import google.generativeai as genai
-
-
-#API gemini para resmuir o texto:
-genai.configure(api_key="AIzaSyC_qsbOddcFtSVM1kk2XrMQi_fKJ07fV_Y")
-APIgemini = genai.GenerativeModel(model_name="gemini-1.5-flash")
-
 
 # Carregar o modelo e o tokenizer
 model_name = "lucas-leme/FinBERT-PT-BR"
@@ -86,21 +79,19 @@ def get_news_text(url):
         return None
     
     # Obter o título da notícia
-    title_tag = main_content.find('h1', class_='post__title')
+    title_tag = main_content.find('h1', class_='single-header__title')
     if not title_tag:
         print(f"Não foi possível encontrar o título para a URL '{url}'")
         return None
     news_title = title_tag.get_text(strip=True)
     
     # Obter a data e hora da publicação
-    time_tag = main_content.find('span', class_='post__data')
+    time_tag = main_content.find('time', class_='single-header__time')
     if not time_tag:
         print(f"Não foi possível encontrar a data de publicação para a URL '{url}'")
         return None
-    date_text = time_tag.get_text()[1:11]
-    hora_text = time_tag.get_text()[15:20]
-    date_str = date_text +" "+ hora_text
-    print(date_str)
+    date_text = time_tag.get_text()
+    date_str = date_text
     publication_date = (date_str)
     
     
@@ -141,11 +132,6 @@ def analyze_sentiment(text):
 # Lista de palavras para buscar notícias
 queries = ["ELON MUSK", "MARK ZUCKERBERG","LUIZA TRAJANO","BETO SICUPIRA"]
 
-def resumeOTexto(texto):
-    response = APIgemini.generate_content("Poderia me fazer um favor? faça um resumo da notícia abaixo por gentileza, garanta que o resumo tenha no máximo 512 caracteres, por favor retorne apenas o texto do resumo. Grato!\n"+texto)
-    return response.text
-    
-
 # Obter URLs de notícias para cada palavra na lista
 for query in queries:
     print(f"RESULTADOS PARA: '{query}':")
@@ -156,12 +142,10 @@ for query in queries:
     for url in news_urls:
         news_data = get_news_text(url)
         if news_data:
-            resumo=resumeOTexto(news_data['content'])
-            positivo, negativo, neutro= analyze_sentiment(resumo)
+            positivo, negativo, neutro = analyze_sentiment(news_data['content'])
             print(f"Título: {news_data['title']}")
             print(f"Data de Publicação: {news_data['publication_date']}")
-            print(f"Resumo do texto: "+resumo)
             print(f"URL: {url}")
-            print(f"SENTIMENTOS: Positivo: ",positivo," Negativo: ",negativo," Neutro",neutro)
+            print(f"SENTIMENTOS: Positivo: {positivo}, Negativo: {negativo}, Neutro: {neutro}")
             print()
             print()
